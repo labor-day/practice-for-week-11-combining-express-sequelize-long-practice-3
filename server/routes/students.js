@@ -8,16 +8,38 @@ const { Op } = require("sequelize");
 
 // List
 router.get('/', async (req, res, next) => {
+    let query = {
+        attributes: ['id', 'firstName', 'lastName', 'leftHanded'],
+        where: {},
+        // Phase 1A: Order the Students search results
+        order: [['lastName', 'ASC'], ['firstName', 'ASC']],
+    }
+
     let errorResult = { errors: [], count: 0, pageCount: 0 };
 
     // Phase 2A: Use query params for page & size
     // Your code here
+    let page = typeof parseInt(req.query.page) === 'number' ? parseInt(req.query.page) : 1;
+    let size = typeof parseInt(req.query.size) === 'number' ? parseInt(req.query.size) : 10;
+
 
     // Phase 2B: Calculate limit and offset
     // Phase 2B (optional): Special case to return all students (page=0, size=0)
     // Phase 2B: Add an error message to errorResult.errors of
         // 'Requires valid page and size params' when page or size is invalid
     // Your code here
+    let devMode = (page === 0 && size === 0);
+    let validPage = (page >= 1);
+    let validSize = (size >= 1 && size <= 200);
+
+    if (!devMode) {
+        if (validPage && validSize) {
+            query.limit = size
+            query.offset = (page - 1) * size;
+        } else {
+            errorResult.errors.push({ message: 'Requires valid page and size params' });
+        }
+    }
 
     // Phase 4: Student Search Filters
     /*
@@ -44,8 +66,30 @@ router.get('/', async (req, res, next) => {
     */
     const where = {};
 
-    // Your code here
+    //Your code here
+    if (req.query.firstName) {
+        where.firstName = {
+            [Op.like]: `%${req.query.firstName}%`
+        }
+    }
 
+    if (req.query.lastName) {
+        where.lastName = {
+            [Op.like]: `%${req.query.lastName}%`
+        }
+    }
+
+    if (req.query.lefty) {
+        if (req.query.lefty === 'true' || req.query.lefty === 'false') {
+            where.leftHanded = JSON.parse(req.query.lefty)
+        } else {
+            errorResult.errors.push({
+                message: "Lefty should be either true or false"
+            });
+        }
+    }
+
+    query.where = where;
 
     // Phase 2C: Handle invalid params with "Bad Request" response
     // Phase 3C: Include total student count in the response even if params were
@@ -63,18 +107,23 @@ router.get('/', async (req, res, next) => {
                 }
         */
     // Your code here
+    errorResult.count = await Student.count();
+
+    if (errorResult.errors.length) {
+        res.json({
+            status: 400,
+            body: errorResult
+        });
+    }
 
     let result = {};
 
     // Phase 3A: Include total number of results returned from the query without
         // limits and offsets as a property of count on the result
         // Note: This should be a new query
+    result.count = await Student.count(query);
 
-    result.rows = await Student.findAll({
-        attributes: ['id', 'firstName', 'lastName', 'leftHanded'],
-        where,
-        // Phase 1A: Order the Students search results
-    });
+    result.rows = await Student.findAll(query);
 
     // Phase 2E: Include the page number as a key of page in the response data
         // In the special case (page=0, size=0) that returns all students, set
@@ -87,6 +136,7 @@ router.get('/', async (req, res, next) => {
             }
         */
     // Your code here
+    result.page = devMode ? 1 : page;
 
     // Phase 3B:
         // Include the total number of available pages for this query as a key
@@ -103,6 +153,7 @@ router.get('/', async (req, res, next) => {
             }
         */
     // Your code here
+    result.pageCount = devMode ? 1 : Math.ceil(result.count/size);
 
     res.json(result);
 });

@@ -4,17 +4,25 @@ const router = express.Router();
 
 // Import model(s)
 const { Supply } = require('../db/models');
+const { Op } = require('sequelize');
 
 // List of supplies by category
 router.get('/category/:categoryName', async (req, res, next) => {
     // Phase 1C:
-        // Find all supplies by category name
-        // Order results by supply's name then handed
-        // Return the found supplies as the response body
+    // Find all supplies by category name
+    let supplies = await Supply.findAll({
+        where:{
+            category: { [Op.like]: req.params.categoryName }
+        },
+        order: [['name', 'ASC'], ['handed', 'ASC']]
+    });
+    // Order results by supply's name then handed
+    // Return the found supplies as the response body
     // Phase 8A:
         // Include Classroom in the supplies query results
         // Order nested classroom results by name first then by supply name
     // Your code here
+    res.json(supplies);
 });
 
 
