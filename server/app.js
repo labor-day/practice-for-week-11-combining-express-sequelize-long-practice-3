@@ -10,7 +10,11 @@ const app = express();
 // Express using json - DO NOT MODIFY
 app.use(express.json());
 
+// paginator middleware
+const paginator = require('./utils/paginator');
+
 // Connect routers API - DO NOT MODIFY
+app.use(paginator);
 app.use('/', require('./routes/verification'));
 app.use('/classrooms', require('./routes/classrooms'));
 app.use('/students', require('./routes/students'));

@@ -3,14 +3,14 @@ const express = require('express');
 const router = express.Router();
 
 // Import model(s)
-const { Classroom } = require('../db/models');
+const { Classroom, Supply, StudentClassroom, Student, sequelize } = require('../db/models');
 const { Op } = require('sequelize');
 
 // List of classrooms
 router.get('/', async (req, res, next) => {
     let errorResult = { errors: [], count: 0, pageCount: 0 };
 
-    // Phase 2B: Classroom Search Filters
+    // Phase 6A: Classroom Search Filters
     /*
         name filter:
             If the name query parameter exists, set the name query
@@ -37,12 +37,62 @@ router.get('/', async (req, res, next) => {
     const where = {};
 
     // Your code here
+    if (req.query.name) {
+        where.name = {
+            [Op.like]: `%${req.query.name}%`
+        }
+    }
+
+    if (req.query.studentLimit) {
+        let specifiedLimit = req.query.studentLimit;
+        let limits = specifiedLimit.split(',');
+        limits = limits.map(element => parseInt(element));
+        let validNumbers = limits.every(element => !isNaN(element));
+
+        if (limits.length > 1) {
+            if (limits[0] > limits[1] || !validNumbers) {
+                errorResult.errors.push({
+                    message: "Student Limit should be two numbers: min,max"
+                });
+            } else {
+                where.studentLimit = {};
+                where.studentLimit[Op.between] = limits
+            }
+        } else {
+            if (!validNumbers) {
+                errorResult.errors.push({
+                    message: "Student Limit should be an integer"
+                });
+            } else {
+                where.studentLimit = {};
+                where.studentLimit[Op.eq] = limits
+            }
+        }
+    }
+
+
+    if (errorResult.errors.length) {
+        res.json({
+            status: 400,
+            body: errorResult
+        });
+    }
 
     const classrooms = await Classroom.findAll({
-        attributes: [ 'id', 'name', 'studentLimit' ],
+        attributes: [
+            'id',
+            'name',
+            'studentLimit',
+            [sequelize.fn("AVG", sequelize.col('grade')), 'avgGrade'],
+            [sequelize.fn("COUNT", sequelize.col('studentId')), 'numStudents']
+        ],
         where,
         // Phase 1B: Order the Classroom search results
-        order: [['name', 'ASC']]
+        order: [['name', 'ASC']],
+        include: {
+            model: StudentClassroom,
+            attributes: []
+        }
     });
 
     res.json(classrooms);
@@ -59,6 +109,20 @@ router.get('/:id', async (req, res, next) => {
                 // then firstName (both in ascending order)
                 // (Optional): No need to include the StudentClassrooms
         // Your code here
+        include: [
+            {
+                model: Supply,
+                attributes: ['id', 'name', 'category', 'handed'],
+            },
+            {
+                model: Student,
+                attributes: ['id', 'firstName', 'lastName', 'leftHanded']
+            }
+        ],
+        order: [
+            [Supply, 'category', 'ASC'], [Supply, 'name', 'ASC'],
+            [Student, 'lastName', 'ASC'], [Student, 'firstName', 'ASC']
+        ]
     });
 
     if (!classroom) {
@@ -76,6 +140,28 @@ router.get('/:id', async (req, res, next) => {
             // classroom
         // Optional Phase 5D: Calculate the average grade of the classroom
     // Your code here
+    classroom = classroom.toJSON();
+
+    classroom.supplyCount = await Supply.count({
+        where: {
+            classroomId: req.params.id
+        }
+    });
+
+    classroom.studentCount = await StudentClassroom.count({
+        where: {
+            classroomId: req.params.id
+        }
+    })
+
+    classroom.overloaded =
+        classroom.studentCount > classroom.studentLimit ? true : false
+
+    classroom.avgGrade = await StudentClassroom.sum('grade', {
+        where: {
+            classroomId: req.params.id
+        }
+    }) / classroom.studentCount
 
     res.json(classroom);
 });

@@ -3,24 +3,38 @@ const express = require('express');
 const router = express.Router();
 
 // Import model(s)
-const { Student } = require('../db/models');
+const { Student, Classroom, StudentClassroom } = require('../db/models');
 const { Op } = require("sequelize");
 
 // List
 router.get('/', async (req, res, next) => {
+
     let query = {
         attributes: ['id', 'firstName', 'lastName', 'leftHanded'],
         where: {},
         // Phase 1A: Order the Students search results
-        order: [['lastName', 'ASC'], ['firstName', 'ASC']],
+        order: [
+            [StudentClassroom, 'grade', 'DESC'],
+            ['lastName', 'ASC'], ['firstName', 'ASC']
+        ],
+
+        include: {  //use nested includes instead of through, to allow sorting
+            model: StudentClassroom,
+            attributes: ['grade'],
+            include: {
+                model: Classroom,
+                attributes: ['id', 'name']
+            }
+        },
+        distinct: true //gives us the correct count
     }
 
     let errorResult = { errors: [], count: 0, pageCount: 0 };
 
     // Phase 2A: Use query params for page & size
     // Your code here
-    let page = typeof parseInt(req.query.page) === 'number' ? parseInt(req.query.page) : 1;
-    let size = typeof parseInt(req.query.size) === 'number' ? parseInt(req.query.size) : 10;
+    // let page = typeof parseInt(req.query.page) === 'number' ? parseInt(req.query.page) : 1;
+    // let size = typeof parseInt(req.query.size) === 'number' ? parseInt(req.query.size) : 10;
 
 
     // Phase 2B: Calculate limit and offset
@@ -28,17 +42,24 @@ router.get('/', async (req, res, next) => {
     // Phase 2B: Add an error message to errorResult.errors of
         // 'Requires valid page and size params' when page or size is invalid
     // Your code here
-    let devMode = (page === 0 && size === 0);
-    let validPage = (page >= 1);
-    let validSize = (size >= 1 && size <= 200);
+    // let devMode = (page === 0 && size === 0);
+    // let validPage = (page >= 1);
+    // let validSize = (size >= 1 && size <= 200);
 
+    // if (!devMode) {
+    //     if (validPage && validSize) {
+    //         query.limit = size
+    //         query.offset = (page - 1) * size;
+    //     } else {
+    //         errorResult.errors.push({ message: 'Requires valid page and size params' });
+    //     }
+    // }
+
+    //use parameters saved from paginator middleware to set limit/offset
+    let devMode = req.query.devMode;
     if (!devMode) {
-        if (validPage && validSize) {
-            query.limit = size
-            query.offset = (page - 1) * size;
-        } else {
-            errorResult.errors.push({ message: 'Requires valid page and size params' });
-        }
+        query.limit = req.query.limit;
+        query.offset = req.query.offset
     }
 
     // Phase 4: Student Search Filters
@@ -136,7 +157,7 @@ router.get('/', async (req, res, next) => {
             }
         */
     // Your code here
-    result.page = devMode ? 1 : page;
+    result.page = devMode ? 1 : req.query.page;
 
     // Phase 3B:
         // Include the total number of available pages for this query as a key
@@ -153,7 +174,7 @@ router.get('/', async (req, res, next) => {
             }
         */
     // Your code here
-    result.pageCount = devMode ? 1 : Math.ceil(result.count/size);
+    result.pageCount = devMode ? 1 : Math.ceil(result.count/req.query.size);
 
     res.json(result);
 });
